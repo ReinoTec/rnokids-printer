@@ -15,23 +15,21 @@ class PrinterService {
   // Conectar ao QZ Tray
   async connectQZ() {
     try {
-      // QZ Tray deve estar rodando localmente
-      // O script será carregado via CDN no HTML
-      if (typeof qz === 'undefined') {
-        throw new Error('QZ Tray não encontrado. Certifique-se de que está instalado e rodando.')
+      // Verificar se QZ Tray está rodando fazendo uma requisição HTTP
+      const response = await axios.get('http://localhost:8182/', {
+        timeout: 2000
+      })
+      
+      if (response.status === 200) {
+        this.isConnected = true
+        console.log('[PRINTER] ✅ QZ Tray detectado e rodando')
+        return true
       }
-
-      this.qz = qz
-
-      if (!qz.websocket.isActive()) {
-        await qz.websocket.connect()
-      }
-
-      this.isConnected = true
-      console.log('[PRINTER] ✅ Conectado ao QZ Tray')
-      return true
+      
+      throw new Error('QZ Tray não respondeu')
     } catch (error) {
-      console.error('[PRINTER] ❌ Erro ao conectar QZ Tray:', error)
+      console.error('[PRINTER] ❌ QZ Tray não está rodando:', error.message)
+      console.error('[PRINTER] 💡 Certifique-se de que o QZ Tray está instalado e rodando')
       this.isConnected = false
       return false
     }
@@ -72,50 +70,28 @@ class PrinterService {
 
   // Imprimir etiqueta
   async imprimirEtiqueta(item) {
-    if (this.isPrinting || !this.isConnected) {
+    if (this.isPrinting) {
       return false
     }
 
     this.isPrinting = true
 
     try {
-      console.log(`[PRINTER] 🖨️ Imprimindo: ${item.crianca_nome}`)
+      console.log(`[PRINTER] 🖨️ Processando: ${item.crianca_nome}`)
 
-      // Marcar como imprimindo na API
-      await this.marcarComoImprimindo(item.id)
-
-      // Configurar impressora
-      const config = this.qz.configs.create(item.impressora_nome || 'default')
-
-      // Imprimir etiqueta da criança
-      if (item.html_crianca) {
-        const dataCrianca = [{
-          type: 'html',
-          format: 'plain',
-          data: item.html_crianca
-        }]
-        await this.qz.print(config, dataCrianca)
-      }
-
-      // Imprimir etiqueta do responsável (se houver)
-      if (item.html_responsavel) {
-        const dataResponsavel = [{
-          type: 'html',
-          format: 'plain',
-          data: item.html_responsavel
-        }]
-        await this.qz.print(config, dataResponsavel)
-      }
-
-      // Marcar como impresso
+      // Por enquanto, apenas marcar como impresso
+      // A impressão real acontece via navegador no site
+      // TODO: Implementar impressão direta via QZ Tray quando necessário
+      
       await this.marcarComoImpresso(item.id)
       
       this.stats.impressasHoje++
-      console.log(`[PRINTER] ✅ Etiqueta impressa: ${item.crianca_nome}`)
+      console.log(`[PRINTER] ✅ Marcado como impresso: ${item.crianca_nome}`)
+      console.log(`[PRINTER] 💡 Abra ${config.getApiUrl()}/admin/impressao para imprimir`)
       
       return true
     } catch (error) {
-      console.error(`[PRINTER] ❌ Erro ao imprimir:`, error)
+      console.error(`[PRINTER] ❌ Erro:`, error)
       await this.marcarComoErro(item.id, error.message)
       this.stats.erros++
       return false
