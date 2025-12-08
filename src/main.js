@@ -39,8 +39,8 @@ app.on('ready', async () => {
 
 // Criar ícone na bandeja do sistema
 function createTray() {
-  // Tentar carregar ícone, usar vazio se não existir
-  const iconPath = path.join(__dirname, '../assets/icon.png')
+  // Usar ícone 16x16 para o tray (Template para macOS)
+  const iconPath = path.join(__dirname, '../assets/icons/png/16x16.png')
   let icon
   
   try {
