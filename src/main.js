@@ -39,9 +39,24 @@ app.on('ready', async () => {
 
 // Criar ícone na bandeja do sistema
 function createTray() {
-  // Ícone simples (substitua por um ícone real)
+  // Tentar carregar ícone, usar vazio se não existir
   const iconPath = path.join(__dirname, '../assets/icon.png')
-  tray = new Tray(iconPath)
+  let icon
+  
+  try {
+    const fs = require('fs')
+    if (fs.existsSync(iconPath)) {
+      icon = nativeImage.createFromPath(iconPath)
+    } else {
+      console.log('[RNO-PRINTER] ⚠️ Ícone não encontrado, usando ícone padrão')
+      icon = nativeImage.createEmpty()
+    }
+  } catch (error) {
+    console.log('[RNO-PRINTER] ⚠️ Erro ao carregar ícone:', error.message)
+    icon = nativeImage.createEmpty()
+  }
+  
+  tray = new Tray(icon)
   
   updateTrayMenu()
   
