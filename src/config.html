@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Configuração - RNO Kids Printer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 30px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 400px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    
+    p {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: monospace;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    button:hover {
+      background: #45a049;
+    }
+    
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .alert {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    
+    .alert-info {
+      background: #e3f2fd;
+      color: #1976d2;
+      border: 1px solid #90caf9;
+    }
+    
+    .alert-success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border: 1px solid #81c784;
+    }
+    
+    .alert-error {
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🖨️ RNO Kids Printer</h1>
+    <p>Configure o aplicativo com o token gerado no site</p>
+    
+    <div id="alert" style="display: none;"></div>
+    
+    <form id="configForm">
+      <div class="form-group">
+        <label for="token">Token de Autenticação</label>
+        <input 
+          type="text" 
+          id="token" 
+          placeholder="rnk_abc123..." 
+          required
+        >
+      </div>
+      
+      <button type="submit" id="submitBtn">
+        Salvar e Iniciar
+      </button>
+    </form>
+    
+    <div class="alert alert-info" style="margin-top: 20px;">
+      <strong>💡 Como obter o token:</strong><br>
+      1. Acesse rnokids.com.br<br>
+      2. Vá em Configurações → Impressão<br>
+      3. Clique em "Gerar Token de Instalação"<br>
+      4. Cole o token acima
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron')
+    
+    const form = document.getElementById('configForm')
+    const tokenInput = document.getElementById('token')
+    const submitBtn = document.getElementById('submitBtn')
+    const alertDiv = document.getElementById('alert')
+    
+    function showAlert(message, type = 'info') {
+      alertDiv.className = `alert alert-${type}`
+      alertDiv.textContent = message
+      alertDiv.style.display = 'block'
+    }
+    
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      
+      const token = tokenInput.value.trim()
+      
+      if (!token) {
+        showAlert('Por favor, insira o token', 'error')
+        return
+      }
+      
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Salvando...'
+      
+      try {
+        // Decodificar token (formato: base64 com org_id e org_nome)
+        const decoded = JSON.parse(atob(token.split('.')[1] || '{}'))
+        
+        const result = await ipcRenderer.invoke('save-config', {
+          token: token,
+          organizacao_id: decoded.organizacao_id,
+          organizacao_nome: decoded.organizacao_nome || 'Organização'
+        })
+        
+        if (result.success) {
+          showAlert('✅ Configuração salva! Iniciando serviço...', 'success')
+          setTimeout(() => {
+            window.close()
+          }, 2000)
+        }
+      } catch (error) {
+        showAlert('❌ Token inválido. Verifique e tente novamente.', 'error')
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Salvar e Iniciar'
+      }
+    })
+  </script>
+</body>
+</html>
