@@ -1,103 +1,183 @@
 const axios = require('axios')
+const WebSocket = require('ws')
+const crypto = require('crypto')
 const config = require('./config')
-const qz = require('qz-tray')
+
+// Certificado do RNO Kids (do site)
+const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIICyDCCAbACCQCula5h5a/W8DANBgkqhkiG9w0BAQsFADAmMREwDwYDVQQDDAhS
+Tk8gS2lkczERMA8GA1UECgwIUmVpbm90ZWMwHhcNMjUxMjA4MTkyNTQyWhcNMzUx
+MjA2MTkyNTQyWjAmMREwDwYDVQQDDAhSTk8gS2lkczERMA8GA1UECgwIUmVpbm90
+ZWMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDka/PLTQG8AMjnl3+O
+wZ0zPSbsjJ70+znIW2of8YM+/K+MYIvazCr06cluhspNZw7WKNr2e35eJ1oEGUVc
+5bc1PdE7gV2QhOwjq/NHhlfU8t9IwDA0LQR62iucdgnVBKd42j2Xp5qbzlT+M/Fw
+YsJ7u7Pf5VGZdP8Ml+txBcgrA65epKZCrbODKi/EL2b60y5xrsb9RgS5t5JO33UW
+/s8laeghg95UGh3qNn8kSr8cO+lFkY4xB6QdN/CiQodfo7NoNJCG/pUuVbPj//nB
+TT9KgFBYgYFzwS0cim1DUkmulRImZ9F8JLuIuP1ZOCzE6vId+BkW+XAi4WeG/n/o
+Qv8ZAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAErBrmm4L2C9TQT/9fjRxVUfZ1OY
+QGzeG1Uki2LYZH+4Ec8UHt4CwG3OMPI8kBJuccWtwNZH9EDG46ZY0EOmOW8pFqyT
+lKyklY4YdAtCIqyc0g8iqgVkK7PteOM7XCB5KBgxGHFSX6nnRjOJ7MEk1oPisySU
+4ndQhfMZCHn46ZhdjpnDiS/IuA6I6C68uk1bAeEXO7JQIrP3cfyWsn1D+0IYCTrC
+t1LUsAOk7uArbbY80ioqBMmk8x5mi2zZ8Y0tpi6+l+IER8IbO/TXntG8JuOa3NpB
+YYX3AbElmJfspgBAVhACJtmiORBWob4FbZlboxKWJKz1AtKmfV/oP1wTQTY=
+-----END CERTIFICATE-----`
+
+// Chave privada do RNO Kids
+const QZ_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDka/PLTQG8AMjn
+l3+OwZ0zPSbsjJ70+znIW2of8YM+/K+MYIvazCr06cluhspNZw7WKNr2e35eJ1oE
+GUVc5bc1PdE7gV2QhOwjq/NHhlfU8t9IwDA0LQR62iucdgnVBKd42j2Xp5qbzlT+
+M/FwYsJ7u7Pf5VGZdP8Ml+txBcgrA65epKZCrbODKi/EL2b60y5xrsb9RgS5t5JO
+33UW/s8laeghg95UGh3qNn8kSr8cO+lFkY4xB6QdN/CiQodfo7NoNJCG/pUuVbPj
+//nBTT9KgFBYgYFzwS0cim1DUkmulRImZ9F8JLuIuP1ZOCzE6vId+BkW+XAi4WeG
+/n/oQv8ZAgMBAAECggEAd2jHpbu38GQooojcMfCdETAirP5GCqNabZb8P36tsbu+
+uY+vDM42lpmwp4rnLtd1NhddgATG5smDkSj0zb94quiJ/KWAGBCksXEuWHGucLAW
+cZ2mlWADO4XZzo0WTrmEIvVTxXfkpxaR7+GPkcTPDoftXFow8hvrSNYSSp9PKMxi
+u2UhyuLr737db7rbWQ+vP9pNUa0adc0g6IRbc1UchqTYOX6eB8he95VSXiP6CyqR
+pKr2Hayi7XgMUD1CL5AG8tcVN3ITca09lsT9UUIP25f/T/sy1sjB09j3G6Uz2lhY
+WUcG+XSHAE+7K6a3Yg7Z6FN4ZH4bGLqrqBInsag3EQKBgQD9eF9yRmdMREFJYK0T
+BeZBil0V9CdnzTTfDADXX/0o+jiYMZlduDyDM+vaQaUSZFfbp7t08ib7edivZ4A9
+Qj3BgTAH+4JCoPxRBXko11bgN+L9spH4TpLrUWWRASCvfKao8cDjYLQ8jv3+6mDx
+04voRDi8k9mxHgU5rVsDdrr6fwKBgQDms5RXKi3nLs76qfxAnn5VXpChEzQ4xhOF
+wfp5ErtZ3Ryyfm+Sdu9HM8sutTpmwR86PySn/bqLsJc5RuHVkjfWUsCvSsfzPNpN
+pd4Xb3Og0PqstEOAwvAz4/2nWa8rjI2zG/fl0wWb9i7gsqzD2+TpdPsp//tfzRLn
+M6an9qDKZwKBgQDNVY1kwrn947FL40ByD65nW9Jq7X5arbduFYg88arhXksop82J
+Sa3jz9T524IBMz6lV+0ZIO4JfLzX463Ucmwa7S/e15W/qjCc5iUvu7rKKxv8z4NG
+t0h3z1nLLTGwV/efFzFeQcHg6SnEL1TXsrs9Lr8TrWaGAD7VaaU4Wh/AuwKBgQCg
+MxGOWa7Ye2ulKscNBEJL+8fI4nH//qPt3R6WVoicxWs5E41ckpRjyDaOb7BnTDHo
+G5LTyOByQiUw0+TcjpWRkZNV5kLkyFv7UXPgqDcN9DAuH1tEnZl5HxezzxZR0l9P
+gdtpz1h0zcYNqGVJ+HeEGgSTTLt88gXvYLGYry1GfwKBgQDq78CaOR9mqftbPdRg
+1UnfohQmPfnHwEzFdu4sS8k4/BVN+6/twBXn3W45yth/0PNBdKfxdk03LpKWiC8G
+n3KNu5kswrCGLFyV79x9Ka1lMD4uLzcYTv5bT5inv6dqEeFAZ+jIwkbsb0yDFlit
+EQ2OZBsSXMs1+YHLQlacfpHMrg==
+-----END PRIVATE KEY-----`
 
 class PrinterService {
   constructor() {
-    this.qz = qz
+    this.ws = null
     this.isConnected = false
     this.isPrinting = false
+    this.messageId = 0
+    this.pendingMessages = new Map()
     this.stats = {
       impressasHoje: 0,
       erros: 0
     }
   }
 
-  // Conectar ao QZ Tray
+  // Assinar mensagem com certificado
+  signMessage(message) {
+    const sign = crypto.createSign('SHA256')
+    sign.update(message)
+    sign.end()
+    return sign.sign(QZ_PRIVATE_KEY, 'base64')
+  }
+
+  // Conectar ao QZ Tray via WebSocket
   async connectQZ() {
-    try {
-      // Configurar certificado (demo cert do QZ Tray)
-      qz.security.setCertificatePromise(() => {
-        return `-----BEGIN CERTIFICATE-----
-MIIECzCCAvOgAwIBAgIGAZr/Wf0sMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
-EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
-UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
-HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
-RGVtbyBDZXJ0MB4XDTI1MTIwNzE5MDQzOFoXDTQ1MTIwNzE5MDQzOFowgaIxCzAJ
-BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
-VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
-IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
-VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCw
-C55ab940XQ0W0ENEh+byKtSVOaeYUW3yZbPBOakBuV7ctMdrYUyEM3UVChX15aF7
-TbqMeIzdMkLrdqZBvutpT3zWiRCXDvkpZypKi6gkSMmTtMy8f9+buzL4VxLE8PoK
-qGNzfOaI46nEcdZtCr2wy3sa+nE7wpobLyXapFApoXpacqzBiL4ZBMwFJf9FJw00
-GYmPEGEVgpGgS3lAahD03eC4cS0D5ndKPR0aXGXHRJ6NTY3nXpMR/20Bmw+RKafv
-/T4/7m6x/RGNUJV98Z5cTqob0ObLT0LY79ErgbR0zsQYOcctfSixM26N2eomFHPV
-En6GuGEcOmnfNWMNpLCDAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
-VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSvwhRMx5tOGytyyDeuHc9NJ00QhDANBgkq
-hkiG9w0BAQsFAAOCAQEAXsveTdQVIcwXG5c1AGeb8y7DWy7XhmE0wXmC5MybGUQu
-mAe+yuizq5J5j5ANUjm//TfJcx6M1JVRgPjyOny5RO312am5ErXszcbCDazKww1j
-mVndJBK+kSJYUsK6yHE3w8gHg6ArTZAqLql+q2fxOAtCohrmI9qXHWEO0tpsV9cV
-bKib4fIGoYFmf1vtAwXs5Y74H4NlAJ2+2ltQDoydZokgWtWQ2IzK24oOAKbDXK2G
-h4nBl/FkW7YF8IoJmBhH06yUB7kk5090cn+gk7wfDKJXOlkMyc/VJFwDiy3VdwgX
-ltJPsg8KO/Htvsj1kzf6I5m0FBiAjaZvfYUOxl3dxg==
------END CERTIFICATE-----`
-      })
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('[PRINTER] 🔌 Conectando ao QZ Tray...')
+        
+        // Conectar ao WebSocket do QZ Tray (porta 8182)
+        this.ws = new WebSocket('wss://localhost:8182', {
+          rejectUnauthorized: false // Aceitar certificado auto-assinado do QZ Tray
+        })
 
-      qz.security.setSignatureAlgorithm('SHA512')
-      qz.security.setSignaturePromise((toSign) => {
-        return (resolve) => {
-          // Assinar com a chave privada
-          const privateKey = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCwC55ab940XQ0W
-0ENEh+byKtSVOaeYUW3yZbPBOakBuV7ctMdrYUyEM3UVChX15aF7TbqMeIzdMkLr
-dqZBvutpT3zWiRCXDvkpZypKi6gkSMmTtMy8f9+buzL4VxLE8PoKqGNzfOaI46nE
-cdZtCr2wy3sa+nE7wpobLyXapFApoXpacqzBiL4ZBMwFJf9FJw00GYmPEGEVgpGg
-S3lAahD03eC4cS0D5ndKPR0aXGXHRJ6NTY3nXpMR/20Bmw+RKafv/T4/7m6x/RGN
-UJV98Z5cTqob0ObLT0LY79ErgbR0zsQYOcctfSixM26N2eomFHPVEn6GuGEcOmnf
-NWMNpLCDAgMBAAECggEAGwrbMIg7qW6GdV6DiXJDjdKkz3weRwhx1l48uRiq4gAV
-gYYRlhNJsOBuAqUxz2aOojAZURJZjRxMlE/9ul63Wc4jM+9fyYc8IK80xg5i7e6d
-FwqbDUpVUTOgi5kQjIkkgmDwefaR5oLrpVNZUsG8zCd4XyILz9gVBR+pIHIaJZ1j
-hmy/gHOXiWg9J965Kci76HhPXsEX3/mfmwCNT22i/KppfaMIaMjOAOFD3jncYm/U
-kE4waE66mXNn/ChqzfOGYSFcsM/YXX9TBXIIOYJ+EyHWbR7j8Mj3AftYfH8QkbJP
-CsZdrLSEidPJZKv0Q0bWgo0dwkLj6l36MB3jkf/2DQKBgQDnNkwP2R2A75Jv/4QC
-dguLZjz0KdIRnkWJY9PoI6ZP7NosPRrxe8HnMbXAaKbRCShysdWObms6AMXD80kA
-lJWI11dzUfup2Ts6ineqDjg1hY23j0dPkYcHyvRVH89VK6As2Vg8ewYGgoNVke2B
-F5Ht+AIxb6S7KBGnNXDMYp+ChQKBgQDC60AS2y0nYKjCZ9oVYK8K2YHFgGyFPQKD
-Z1DEQ4HlAYUWy0gKuIq3pXAWizDiaJYP2zZWrGuIbch8MFA6hUGkVTa+Yly+ryMx
-8pNWOaxXTExU9xyWPxhTQY+NFleB/XYP3e4n7I/ciSXypo6q0+JvP0BHNNZ8jX3W
-LXwoPYaJZwKBgDjNwTAfkj0MHrj/WIpWQA3WZ2FBKQgFD2ZqrTQaFhEKyqsVtBnh
-4siPEO0diOZQTqym/iWJATT13aB/k87dskM1TJnbaW3YHdILFM0lwy97CU8wlz94
-LGmAtjh3oTN2jVqXZzMsslVFGUkbmfMePE7voHJO0HTeqj+fRIAiNrgVAoGBAIJH
-8z+nN3sGZEXsXBvFz7mUv+RefipgKPnjaFyGMp/6cBZYMQLZbf5pmY234yixdvuK
-Lbuo6wb5OfOn5zf2MXXBbyG5ZPwe24ta85fCXKrM2IhB0t2ptnyPaX+H212LKApa
-7//HYjCpiq+xG9KaZNKumCv/6Qy/Fci+BipvVSkpAoGBANEgyewYIh+5Gfjhmnx6
-rTUJzgMTCndUqH1VoXKqsY/t004YXi7/2YFWrmRXhm7OdK6AZvmY2bZa/lZ/Q3Eb
-MPblkAAnN2b7NQkrW4gpOEREaT6uxPzKdcP3abVQqAhQL2DHzhH8+QguNxKf4wpY
-YSiLoonL0DeGRXu4GKFP6TwU
------END PRIVATE KEY-----`
+        this.ws.on('open', () => {
+          console.log('[PRINTER] ✅ Conectado ao QZ Tray via WebSocket')
+          this.isConnected = true
           
-          const crypto = require('crypto')
-          const sign = crypto.createSign('sha512')
-          sign.update(toSign)
-          resolve(sign.sign(privateKey, 'base64'))
-        }
+          // Configurar certificado
+          this.sendMessage('setCertificate', [QZ_CERTIFICATE])
+            .then(() => {
+              console.log('[PRINTER] 🔐 Certificado configurado')
+              resolve(true)
+            })
+            .catch(reject)
+        })
+
+        this.ws.on('message', (data) => {
+          try {
+            const response = JSON.parse(data.toString())
+            
+            // Processar resposta
+            if (response.uid && this.pendingMessages.has(response.uid)) {
+              const { resolve, reject } = this.pendingMessages.get(response.uid)
+              this.pendingMessages.delete(response.uid)
+              
+              if (response.error) {
+                reject(new Error(response.error))
+              } else {
+                resolve(response.result)
+              }
+            }
+          } catch (error) {
+            console.error('[PRINTER] ❌ Erro ao processar mensagem:', error)
+          }
+        })
+
+        this.ws.on('error', (error) => {
+          console.error('[PRINTER] ❌ Erro WebSocket:', error.message)
+          this.isConnected = false
+          reject(error)
+        })
+
+        this.ws.on('close', () => {
+          console.log('[PRINTER] 🔌 Desconectado do QZ Tray')
+          this.isConnected = false
+        })
+
+        // Timeout de 5 segundos
+        setTimeout(() => {
+          if (!this.isConnected) {
+            reject(new Error('Timeout ao conectar'))
+          }
+        }, 5000)
+
+      } catch (error) {
+        console.error('[PRINTER] ❌ Erro ao conectar:', error.message)
+        reject(error)
+      }
+    })
+  }
+
+  // Enviar mensagem para QZ Tray
+  sendMessage(method, params = []) {
+    return new Promise((resolve, reject) => {
+      if (!this.ws || !this.isConnected) {
+        return reject(new Error('Não conectado ao QZ Tray'))
+      }
+
+      const uid = `msg_${++this.messageId}`
+      const message = JSON.stringify({
+        uid,
+        call: method,
+        params
       })
 
-      // Conectar ao QZ Tray
-      if (!qz.websocket.isActive()) {
-        await qz.websocket.connect()
-      }
-      
-      this.isConnected = true
-      console.log('[PRINTER] ✅ Conectado ao QZ Tray')
-      return true
-    } catch (error) {
-      console.error('[PRINTER] ❌ Erro ao conectar QZ Tray:', error.message)
-      console.error('[PRINTER] 💡 Certifique-se de que o QZ Tray está instalado e rodando')
-      this.isConnected = false
-      return false
-    }
+      // Assinar mensagem
+      const signature = this.signMessage(message)
+
+      // Enviar com assinatura
+      const signedMessage = JSON.stringify({
+        uid,
+        call: method,
+        params,
+        signature
+      })
+
+      this.pendingMessages.set(uid, { resolve, reject })
+      this.ws.send(signedMessage)
+
+      // Timeout de 30 segundos
+      setTimeout(() => {
+        if (this.pendingMessages.has(uid)) {
+          this.pendingMessages.delete(uid)
+          reject(new Error('Timeout aguardando resposta'))
+        }
+      }, 30000)
+    })
   }
 
   // Buscar fila de impressão
@@ -105,24 +185,22 @@ YSiLoonL0DeGRXu4GKFP6TwU
     try {
       const token = config.getAuthToken()
       const organizacaoId = config.getOrganizacaoId()
-      const apiUrl = config.getApiUrl()
-
+      
       if (!token || !organizacaoId) {
-        console.error('[PRINTER] ⚠️ Token ou organização não configurados')
         return []
       }
 
-      const response = await axios.get(
-        `${apiUrl}/api/fila-impressao?organizacao_id=${organizacaoId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+      const response = await axios.get(`${config.getApiUrl()}/api/fila-impressao`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          organizacao_id: organizacaoId,
+          status: 'pendente'
         }
-      )
+      })
 
-      if (response.data.success && response.data.items) {
+      if (response.data && response.data.items) {
         return response.data.items
       }
 
@@ -147,36 +225,54 @@ YSiLoonL0DeGRXu4GKFP6TwU
       // Marcar como imprimindo
       await this.marcarComoImprimindo(item.id)
 
-      // Configurar impressora (usar padrão se não especificado)
-      const printerName = item.impressora_nome || await qz.printers.getDefault()
-      const printerConfig = qz.configs.create(printerName, {
-        colorType: 'grayscale',
-        orientation: 'landscape',
-        rasterize: true,
-        density: 203,
-        margins: { top: 0, right: 0, bottom: 0, left: 0 },
-        scaleContent: true
-      })
+      // Buscar impressora padrão
+      const printers = await this.sendMessage('getPrinters')
+      const printerName = item.impressora_nome || (printers && printers[0])
+
+      if (!printerName) {
+        throw new Error('Nenhuma impressora encontrada')
+      }
+
+      console.log(`[PRINTER] 🖨️ Usando impressora: ${printerName}`)
+
+      // Configurar impressora
+      const config = {
+        printer: printerName,
+        options: {
+          colorType: 'grayscale',
+          orientation: 'landscape',
+          rasterize: true,
+          density: 203,
+          margins: { top: 0, right: 0, bottom: 0, left: 0 },
+          scaleContent: true
+        }
+      }
 
       // Imprimir etiqueta da criança
       if (item.html_crianca) {
-        const dataCrianca = [{
-          type: 'html',
-          format: 'plain',
-          data: item.html_crianca
-        }]
-        await qz.print(printerConfig, dataCrianca)
+        await this.sendMessage('print', [
+          config.printer,
+          [{
+            type: 'html',
+            format: 'plain',
+            data: item.html_crianca
+          }],
+          config.options
+        ])
         console.log(`[PRINTER] ✅ Etiqueta criança impressa`)
       }
 
       // Imprimir etiqueta do responsável (se houver)
       if (item.html_responsavel) {
-        const dataResponsavel = [{
-          type: 'html',
-          format: 'plain',
-          data: item.html_responsavel
-        }]
-        await qz.print(printerConfig, dataResponsavel)
+        await this.sendMessage('print', [
+          config.printer,
+          [{
+            type: 'html',
+            format: 'plain',
+            data: item.html_responsavel
+          }],
+          config.options
+        ])
         console.log(`[PRINTER] ✅ Etiqueta responsável impressa`)
       }
 
@@ -188,7 +284,7 @@ YSiLoonL0DeGRXu4GKFP6TwU
       
       return true
     } catch (error) {
-      console.error(`[PRINTER] ❌ Erro ao imprimir:`, error)
+      console.error(`[PRINTER] ❌ Erro ao imprimir:`, error.message)
       await this.marcarComoErro(item.id, error.message)
       this.stats.erros++
       return false
@@ -201,20 +297,13 @@ YSiLoonL0DeGRXu4GKFP6TwU
   async marcarComoImprimindo(id) {
     try {
       const token = config.getAuthToken()
-      const apiUrl = config.getApiUrl()
-
-      await axios.post(
-        `${apiUrl}/api/fila-impressao/imprimindo`,
-        { id },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      await axios.put(
+        `${config.getApiUrl()}/api/fila-impressao/${id}`,
+        { status: 'imprimindo' },
+        { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {
-      console.error('[PRINTER] ⚠️ Erro ao marcar como imprimindo:', error.message)
+      console.error('[PRINTER] ❌ Erro ao marcar como imprimindo:', error.message)
     }
   }
 
@@ -222,52 +311,93 @@ YSiLoonL0DeGRXu4GKFP6TwU
   async marcarComoImpresso(id) {
     try {
       const token = config.getAuthToken()
-      const apiUrl = config.getApiUrl()
-
-      await axios.post(
-        `${apiUrl}/api/fila-impressao/impresso`,
-        { id },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      await axios.put(
+        `${config.getApiUrl()}/api/fila-impressao/${id}`,
+        { 
+          status: 'impresso',
+          impresso_em: new Date().toISOString()
+        },
+        { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {
-      console.error('[PRINTER] ⚠️ Erro ao marcar como impresso:', error.message)
+      console.error('[PRINTER] ❌ Erro ao marcar como impresso:', error.message)
     }
   }
 
   // Marcar como erro
-  async marcarComoErro(id, mensagem) {
+  async marcarComoErro(id, mensagemErro) {
     try {
       const token = config.getAuthToken()
-      const apiUrl = config.getApiUrl()
-
-      await axios.post(
-        `${apiUrl}/api/fila-impressao/erro`,
-        { id, erro_mensagem: mensagem },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      await axios.put(
+        `${config.getApiUrl()}/api/fila-impressao/${id}`,
+        { 
+          status: 'erro',
+          erro_mensagem: mensagemErro
+        },
+        { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {
-      console.error('[PRINTER] ⚠️ Erro ao marcar como erro:', error.message)
+      console.error('[PRINTER] ❌ Erro ao marcar erro:', error.message)
     }
   }
 
-  // Obter estatísticas
-  getStats() {
-    return {
-      ...this.stats,
-      isConnected: this.isConnected,
-      isPrinting: this.isPrinting
+  // Processar fila
+  async processarFila() {
+    if (this.isPrinting || !this.isConnected) {
+      return
     }
+
+    try {
+      const fila = await this.buscarFila()
+      
+      if (fila.length === 0) {
+        return
+      }
+
+      console.log(`[PRINTER] 📋 ${fila.length} item(ns) na fila`)
+
+      // Processar um item por vez
+      for (const item of fila) {
+        await this.imprimirEtiqueta(item)
+        // Aguardar 1 segundo entre impressões
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    } catch (error) {
+      console.error('[PRINTER] ❌ Erro ao processar fila:', error.message)
+    }
+  }
+
+  // Iniciar serviço
+  async start() {
+    try {
+      // Conectar ao QZ Tray
+      await this.connectQZ()
+      
+      // Processar fila a cada 5 segundos
+      setInterval(() => {
+        this.processarFila()
+      }, 5000)
+
+      console.log('[PRINTER] 🚀 Serviço de impressão iniciado')
+    } catch (error) {
+      console.error('[PRINTER] ❌ Erro ao iniciar serviço:', error.message)
+      
+      // Tentar reconectar após 10 segundos
+      setTimeout(() => {
+        console.log('[PRINTER] 🔄 Tentando reconectar...')
+        this.start()
+      }, 10000)
+    }
+  }
+
+  // Parar serviço
+  stop() {
+    if (this.ws) {
+      this.ws.close()
+    }
+    this.isConnected = false
+    console.log('[PRINTER] 🛑 Serviço de impressão parado')
   }
 }
 
-module.exports = new PrinterService()
+module.exports = PrinterService
