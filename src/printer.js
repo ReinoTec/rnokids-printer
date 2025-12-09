@@ -1,7 +1,7 @@
 const axios = require('axios')
-const WebSocket = require('ws')
-const crypto = require('crypto')
 const config = require('./config')
+const { BrowserWindow, ipcMain } = require('electron')
+const path = require('path')
 
 // Certificado do RNO Kids (do site)
 const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
@@ -54,130 +54,145 @@ EQ2OZBsSXMs1+YHLQlacfpHMrg==
 
 class PrinterService {
   constructor() {
-    this.ws = null
+    this.qzBridge = null
     this.isConnected = false
     this.isPrinting = false
-    this.messageId = 0
-    this.pendingMessages = new Map()
     this.stats = {
       impressasHoje: 0,
       erros: 0
     }
+    this.setupIPC()
   }
 
-  // Assinar mensagem com certificado
-  signMessage(message) {
-    const sign = crypto.createSign('SHA256')
-    sign.update(message)
-    sign.end()
-    return sign.sign(QZ_PRIVATE_KEY, 'base64')
+  // Configurar IPC handlers
+  setupIPC() {
+    // Handler para assinar mensagens
+    ipcMain.handle('qz-sign', async (event, data) => {
+      try {
+        const response = await axios.post(
+          `${config.getApiUrl()}/api/qz-sign`,
+          { request: data },
+          { headers: { 'Content-Type': 'application/json' } }
+        )
+        return response.data
+      } catch (error) {
+        console.error('[PRINTER] ❌ Erro ao assinar:', error.message)
+        throw error
+      }
+    })
+
+    // Listener para conexão QZ
+    ipcMain.on('qz-connected', (event, connected) => {
+      this.isConnected = connected
+      console.log(`[PRINTER] ${connected ? '✅ Conectado' : '❌ Desconectado'} ao QZ Tray`)
+    })
+
+    // Listener para sucesso de impressão
+    ipcMain.on('qz-print-success', () => {
+      console.log('[PRINTER] ✅ Impressão concluída')
+      this.isPrinting = false
+    })
+
+    // Listener para erro de impressão
+    ipcMain.on('qz-print-error', (event, error) => {
+      console.error('[PRINTER] ❌ Erro na impressão:', error)
+      this.isPrinting = false
+    })
   }
 
-  // Conectar ao QZ Tray via WebSocket
+  // Assinar mensagem usando a API do servidor (mesma que a versão web)
+  async signMessage(message) {
+    try {
+      const response = await axios.post(
+        `${config.getApiUrl()}/api/qz-sign`,
+        { request: message },
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+      return response.data
+    } catch (error) {
+      console.error('[PRINTER] ❌ Erro ao assinar mensagem:', error.message)
+      throw error
+    }
+  }
+
+  // Conectar ao QZ Tray via BrowserWindow invisível
   async connectQZ() {
     return new Promise((resolve, reject) => {
       try {
-        console.log('[PRINTER] 🔌 Conectando ao QZ Tray...')
+        console.log('[PRINTER] 🔌 Criando bridge QZ Tray...')
         
-        // Conectar ao WebSocket do QZ Tray (porta 8182)
-        // Tentar ws:// primeiro (sem SSL), depois wss:// se falhar
-        this.ws = new WebSocket('ws://localhost:8182')
-
-        this.ws.on('open', () => {
-          console.log('[PRINTER] ✅ Conectado ao QZ Tray via WebSocket')
-          this.isConnected = true
-          
-          // Conexão estabelecida - pronto para imprimir
-          // Nota: QZ Tray pode pedir permissão na primeira impressão
-          console.log('[PRINTER] ⚠️ QZ Tray pode solicitar permissão na primeira impressão')
-          resolve(true)
-        })
-
-        this.ws.on('message', (data) => {
-          try {
-            const response = JSON.parse(data.toString())
-            
-            // Processar resposta
-            if (response.uid && this.pendingMessages.has(response.uid)) {
-              const { resolve, reject } = this.pendingMessages.get(response.uid)
-              this.pendingMessages.delete(response.uid)
-              
-              if (response.error) {
-                reject(new Error(response.error))
-              } else {
-                resolve(response.result)
-              }
-            }
-          } catch (error) {
-            console.error('[PRINTER] ❌ Erro ao processar mensagem:', error)
+        // Criar janela invisível para executar qz-tray.js
+        this.qzBridge = new BrowserWindow({
+          show: false, // Invisível
+          webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
           }
         })
 
-        this.ws.on('error', (error) => {
-          console.error('[PRINTER] ❌ Erro WebSocket:', error.message)
-          this.isConnected = false
-          reject(error)
-        })
+        // Carregar HTML com qz-tray.js
+        this.qzBridge.loadFile(path.join(__dirname, 'qz-bridge.html'))
 
-        this.ws.on('close', () => {
-          console.log('[PRINTER] 🔌 Desconectado do QZ Tray')
-          this.isConnected = false
-        })
+        // Aguardar conexão
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout ao conectar QZ Tray'))
+        }, 10000)
 
-        // Timeout de 5 segundos
-        setTimeout(() => {
-          if (!this.isConnected) {
-            reject(new Error('Timeout ao conectar'))
+        const onConnected = (event, connected) => {
+          clearTimeout(timeout)
+          if (connected) {
+            console.log('[PRINTER] ✅ QZ Tray conectado via bridge')
+            resolve(true)
+          } else {
+            reject(new Error('Falha ao conectar QZ Tray'))
           }
-        }, 5000)
+        }
+
+        ipcMain.once('qz-connected', onConnected)
 
       } catch (error) {
-        console.error('[PRINTER] ❌ Erro ao conectar:', error.message)
+        console.error('[PRINTER] ❌ Erro ao criar bridge:', error.message)
         reject(error)
       }
     })
   }
 
-  // Enviar mensagem para QZ Tray
-  sendMessage(method, ...params) {
+  // Enviar comando de impressão para a bridge
+  async printViaQZ(printerName, htmlCrianca, htmlResponsavel) {
     return new Promise((resolve, reject) => {
-      if (!this.ws || !this.isConnected) {
-        return reject(new Error('Não conectado ao QZ Tray'))
+      if (!this.qzBridge || !this.isConnected) {
+        return reject(new Error('QZ Bridge não conectado'))
       }
 
-      const uid = `msg_${++this.messageId}`
-      const message = JSON.stringify({
-        uid,
-        call: method,
-        params
-      })
-
-      // Assinar mensagem
-      const signature = this.signMessage(message)
-
-      // Enviar com assinatura
-      const signedMessage = JSON.stringify({
-        uid,
-        call: method,
-        params,
-        signature
-      })
-
-      // Debug: log da mensagem sendo enviada
-      if (method === 'print') {
-        console.log('[PRINTER] 📤 Enviando para QZ Tray:', JSON.stringify({ method, params }, null, 2))
-      }
-
-      this.pendingMessages.set(uid, { resolve, reject })
-      this.ws.send(signedMessage)
-
-      // Timeout de 30 segundos
-      setTimeout(() => {
-        if (this.pendingMessages.has(uid)) {
-          this.pendingMessages.delete(uid)
-          reject(new Error('Timeout aguardando resposta'))
-        }
+      // Timeout
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout na impressão'))
       }, 30000)
+
+      // Listeners temporários
+      const onSuccess = () => {
+        clearTimeout(timeout)
+        ipcMain.removeListener('qz-print-success', onSuccess)
+        ipcMain.removeListener('qz-print-error', onError)
+        resolve()
+      }
+
+      const onError = (event, error) => {
+        clearTimeout(timeout)
+        ipcMain.removeListener('qz-print-success', onSuccess)
+        ipcMain.removeListener('qz-print-error', onError)
+        reject(new Error(error))
+      }
+
+      ipcMain.once('qz-print-success', onSuccess)
+      ipcMain.once('qz-print-error', onError)
+
+      // Enviar comando para bridge
+      this.qzBridge.webContents.send('qz-print', {
+        printerName,
+        htmlCrianca,
+        htmlResponsavel
+      })
     })
   }
 
@@ -223,78 +238,35 @@ class PrinterService {
     try {
       console.log(`[PRINTER] 🖨️ Imprimindo: ${item.crianca_nome}`)
 
-      // Buscar lista de impressoras disponíveis
-      let printerName = item.impressora_nome
+      // SEMPRE usar o nome da impressora da fila
+      const printerName = item.impressora_nome
       
       if (!printerName) {
-        try {
-          // Tentar buscar impressoras disponíveis
-          const printers = await this.sendMessage('getPrinters')
-          if (printers && printers.length > 0) {
-            printerName = printers[0].name || printers[0]
-            console.log(`[PRINTER] 🖨️ Usando primeira impressora: ${printerName}`)
-          } else {
-            throw new Error('Nenhuma impressora encontrada')
-          }
-        } catch (e) {
-          console.error(`[PRINTER] ❌ Erro ao buscar impressoras:`, e.message)
-          throw new Error('Não foi possível encontrar impressora')
-        }
-      } else {
-        console.log(`[PRINTER] 🖨️ Usando impressora: ${printerName}`)
+        throw new Error('Nome da impressora não especificado na fila')
       }
+      
+      console.log(`[PRINTER] 🖨️ Usando impressora: ${printerName}`)
 
-      // Configurar dados de impressão
-      const printConfig = {
-        printer: printerName,
-        options: {
-          colorType: 'grayscale',
-          orientation: 'landscape',
-          rasterize: true,
-          density: 203,
-          margins: { top: 0, right: 0, bottom: 0, left: 0 },
-          scaleContent: true
-        }
-      }
+      // Marcar como imprimindo
+      await this.marcarComoImprimindo(item.id)
 
-      // Imprimir etiqueta da criança
-      if (item.html_crianca) {
-        // QZ Tray espera: print(printer, data)
-        await this.sendMessage('print', 
-          printerName,
-          [{
-            type: 'html',
-            format: 'plain',
-            data: item.html_crianca
-          }]
-        )
-        console.log(`[PRINTER] ✅ Etiqueta criança impressa`)
-      }
+      // Imprimir via QZ Bridge (usa qz-tray.js do browser)
+      await this.printViaQZ(
+        printerName,
+        item.html_crianca,
+        item.html_responsavel
+      )
 
-      // Imprimir etiqueta do responsável (se houver)
-      if (item.html_responsavel) {
-        await this.sendMessage('print',
-          printerName,
-          [{
-            type: 'html',
-            format: 'plain',
-            data: item.html_responsavel
-          }]
-        )
-        console.log(`[PRINTER] ✅ Etiqueta responsável impressa`)
-      }
-
-      // Marcar como impresso (comentado - API retorna 405)
-      // await this.marcarComoImpresso(item.id)
+      // Marcar como impresso
+      await this.marcarComoImpresso(item.id)
       
       this.stats.impressasHoje++
       console.log(`[PRINTER] ✅ Etiqueta completa: ${item.crianca_nome}`)
-      console.log(`[PRINTER] ⚠️ Nota: Status não atualizado na API (erro 405)`)
       
       return true
     } catch (error) {
       console.error(`[PRINTER] ❌ Erro ao imprimir:`, error.message)
-      // await this.marcarComoErro(item.id, error.message)
+      await this.marcarComoErro(item.id, error.message)
       this.stats.erros++
       return false
     } finally {
@@ -306,9 +278,9 @@ class PrinterService {
   async marcarComoImprimindo(id) {
     try {
       const token = config.getAuthToken()
-      await axios.patch(
-        `${config.getApiUrl()}/api/fila-impressao/${id}`,
-        { status: 'imprimindo' },
+      await axios.post(
+        `${config.getApiUrl()}/api/fila-impressao/imprimindo`,
+        { id },
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {
@@ -320,12 +292,9 @@ class PrinterService {
   async marcarComoImpresso(id) {
     try {
       const token = config.getAuthToken()
-      await axios.patch(
-        `${config.getApiUrl()}/api/fila-impressao/${id}`,
-        { 
-          status: 'impresso',
-          impresso_em: new Date().toISOString()
-        },
+      await axios.post(
+        `${config.getApiUrl()}/api/fila-impressao/impresso`,
+        { id },
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {
@@ -337,12 +306,9 @@ class PrinterService {
   async marcarComoErro(id, mensagemErro) {
     try {
       const token = config.getAuthToken()
-      await axios.patch(
-        `${config.getApiUrl()}/api/fila-impressao/${id}`,
-        { 
-          status: 'erro',
-          erro_mensagem: mensagemErro
-        },
+      await axios.post(
+        `${config.getApiUrl()}/api/fila-impressao/erro`,
+        { id, erro_mensagem: mensagemErro },
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
     } catch (error) {

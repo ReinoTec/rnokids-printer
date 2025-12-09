@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QZ Tray Bridge</title>
+  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.5/qz-tray.js"></script>
+</head>
+<body>
+  <h1 style="display:none;">QZ Tray Bridge</h1>
+  
+  <script>
+    const { ipcRenderer } = require('electron')
+    
+    let qzConnected = false
+    
+    // Configurar assinatura via servidor
+    qz.api.setSha256Type(data => {
+      return ipcRenderer.invoke('qz-sign', data)
+    })
+    
+    // Conectar ao QZ Tray
+    async function connectQZ() {
+      try {
+        if (!qz.websocket.isActive()) {
+          console.log('[QZ-BRIDGE] 🔌 Conectando ao QZ Tray...')
+          await qz.websocket.connect()
+          console.log('[QZ-BRIDGE] ✅ Conectado ao QZ Tray')
+          qzConnected = true
+          ipcRenderer.send('qz-connected', true)
+        }
+      } catch (error) {
+        console.error('[QZ-BRIDGE] ❌ Erro ao conectar:', error)
+        qzConnected = false
+        ipcRenderer.send('qz-connected', false)
+      }
+    }
+    
+    // Imprimir via QZ Tray
+    ipcRenderer.on('qz-print', async (event, { printerName, htmlCrianca, htmlResponsavel }) => {
+      try {
+        if (!qzConnected) {
+          await connectQZ()
+        }
+        
+        console.log('[QZ-BRIDGE] 🖨️ Imprimindo...')
+        console.log('[QZ-BRIDGE] 📐 Impressora:', printerName)
+        
+        // Configuração SIMPLES (igual versão web) - apenas nome da impressora
+        const config = qz.configs.create(printerName)
+        
+        console.log('[QZ-BRIDGE] 📄 Config simples criado')
+        
+        // Imprimir etiqueta da criança
+        if (htmlCrianca) {
+          console.log('[QZ-BRIDGE] 📄 Imprimindo etiqueta criança...')
+          const dataCrianca = [{
+            type: 'html',
+            format: 'plain',
+            data: htmlCrianca
+          }]
+          await qz.print(config, dataCrianca)
+          console.log('[QZ-BRIDGE] ✅ Etiqueta criança impressa')
+        }
+        
+        // Imprimir etiqueta do responsável
+        if (htmlResponsavel) {
+          console.log('[QZ-BRIDGE] 📄 Imprimindo etiqueta responsável...')
+          const dataResponsavel = [{
+            type: 'html',
+            format: 'plain',
+            data: htmlResponsavel
+          }]
+          await qz.print(config, dataResponsavel)
+          console.log('[QZ-BRIDGE] ✅ Etiqueta responsável impressa')
+        }
+        
+        ipcRenderer.send('qz-print-success')
+      } catch (error) {
+        console.error('[QZ-BRIDGE] ❌ Erro ao imprimir:', error)
+        ipcRenderer.send('qz-print-error', error.message)
+      }
+    })
+    
+    // Conectar automaticamente ao carregar
+    connectQZ()
+    
+    // Reconectar a cada 30 segundos se desconectar
+    setInterval(() => {
+      if (!qz.websocket.isActive()) {
+        connectQZ()
+      }
+    }, 30000)
+  </script>
+</body>
+</html>
