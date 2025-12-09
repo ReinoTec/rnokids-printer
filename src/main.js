@@ -163,9 +163,6 @@ function createConfigWindow() {
   })
   
   configWindow.loadFile(path.join(__dirname, 'config.html'))
-  
-  // Abrir DevTools para debug
-  configWindow.webContents.openDevTools()
 }
 
 // Iniciar serviço de impressão
@@ -221,13 +218,20 @@ async function processQueue() {
 
 // IPC Handlers para comunicação com janelas
 ipcMain.handle('save-config', async (event, data) => {
-  config.setAuthToken(data.token)
-  config.setOrganizacao(data.organizacao_id, data.organizacao_nome)
-  
-  // Iniciar serviço
-  await startPrinting()
-  
-  return { success: true }
+  try {
+    config.setAuthToken(data.token)
+    config.setOrganizacao(data.organizacao_id, data.organizacao_nome)
+    
+    // Iniciar serviço em background (não bloquear)
+    startPrinting().catch(err => {
+      console.error('[RNO-PRINTER] Erro ao iniciar serviço:', err)
+    })
+    
+    return { success: true }
+  } catch (error) {
+    console.error('[RNO-PRINTER] Erro ao salvar config:', error)
+    return { success: false, error: error.message }
+  }
 })
 
 ipcMain.handle('get-config', () => {
