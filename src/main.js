@@ -1,11 +1,12 @@
 const { app, Tray, Menu, BrowserWindow, ipcMain, nativeImage } = require('electron')
 const path = require('path')
 const config = require('./config')
-const printer = require('./printer')
+const PrinterService = require('./printer')
 
 let tray = null
 let mainWindow = null
 let pollingInterval = null
+let printer = null // Instância do PrinterService
 
 // Prevenir múltiplas instâncias
 const gotTheLock = app.requestSingleInstanceLock()
@@ -23,6 +24,9 @@ if (!gotTheLock) {
 // Quando o app estiver pronto
 app.on('ready', async () => {
   console.log('[RNO-PRINTER] 🚀 Aplicativo iniciado')
+  
+  // Criar instância do PrinterService
+  printer = new PrinterService()
   
   // Criar ícone na bandeja
   createTray()
@@ -164,6 +168,11 @@ function createConfigWindow() {
 // Iniciar serviço de impressão
 async function startPrinting() {
   console.log('[RNO-PRINTER] 🔄 Iniciando serviço de impressão')
+  
+  // Criar instância do PrinterService se não existir
+  if (!printer) {
+    printer = new PrinterService()
+  }
   
   // Conectar ao QZ Tray
   const connected = await printer.connectQZ()

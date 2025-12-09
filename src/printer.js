@@ -398,6 +398,15 @@ class PrinterService {
     this.isConnected = false
     console.log('[PRINTER] 🛑 Serviço de impressão parado')
   }
+
+  // Obter estatísticas
+  getStats() {
+    return {
+      isConnected: this.isConnected,
+      impressasHoje: this.stats.impressasHoje,
+      erros: this.stats.erros
+    }
+  }
 }
 
 module.exports = PrinterService
