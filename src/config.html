@@ -171,14 +171,33 @@
       submitBtn.textContent = 'Salvando...'
       
       try {
+        // Validar formato do token
+        if (!token.startsWith('rnk_')) {
+          throw new Error('Token deve começar com "rnk_"')
+        }
+        
         // Decodificar token (formato: rnk_base64)
         const tokenData = token.replace('rnk_', '')
-        const decoded = JSON.parse(atob(tokenData))
+        
+        // Decodificar base64 usando Buffer do Node.js (mais robusto)
+        let decoded
+        try {
+          const jsonString = Buffer.from(tokenData, 'base64').toString('utf-8')
+          decoded = JSON.parse(jsonString)
+        } catch (e) {
+          console.error('Erro ao decodificar base64:', e)
+          throw new Error('Token com formato inválido')
+        }
+        
+        // Validar campos obrigatórios
+        if (!decoded.organizacao_id || !decoded.organizacao_nome) {
+          throw new Error('Token não contém dados da organização')
+        }
         
         const result = await ipcRenderer.invoke('save-config', {
           token: token,
           organizacao_id: decoded.organizacao_id,
-          organizacao_nome: decoded.organizacao_nome || 'Organização'
+          organizacao_nome: decoded.organizacao_nome
         })
         
         if (result.success) {
@@ -186,10 +205,12 @@
           setTimeout(() => {
             window.close()
           }, 2000)
+        } else {
+          throw new Error(result.error || 'Erro ao salvar configuração')
         }
       } catch (error) {
-        console.error('Erro ao decodificar token:', error)
-        showAlert('❌ Token inválido. Verifique e tente novamente.', 'error')
+        console.error('Erro ao configurar:', error)
+        showAlert(`❌ ${error.message}`, 'error')
         submitBtn.disabled = false
         submitBtn.textContent = 'Salvar e Iniciar'
       }

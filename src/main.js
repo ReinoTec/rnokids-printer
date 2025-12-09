@@ -163,6 +163,9 @@ function createConfigWindow() {
   })
   
   configWindow.loadFile(path.join(__dirname, 'config.html'))
+  
+  // Abrir DevTools para debug
+  configWindow.webContents.openDevTools()
 }
 
 // Iniciar serviço de impressão
