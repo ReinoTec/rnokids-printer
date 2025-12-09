@@ -45,22 +45,25 @@
       "target": [
         "nsis"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icons/win/icon.ico",
+      "artifactName": "RNO-Kids-Printer-Setup-${arch}.${ext}"
     },
     "mac": {
       "target": [
         "dmg"
       ],
       "icon": "assets/icon.icns",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "artifactName": "RNO-Kids-Printer-${arch}.${ext}"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "icon": "assets/icon.png",
-      "category": "Utility"
+      "icon": "assets/icons/png",
+      "category": "Utility",
+      "artifactName": "RNO-Kids-Printer-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
