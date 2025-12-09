@@ -17,7 +17,10 @@
     "qz-tray",
     "electron"
   ],
-  "author": "RNO Kids",
+  "author": {
+    "name": "RNO Kids",
+    "email": "contato@rnokids.com.br"
+  },
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0",
