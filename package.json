@@ -29,7 +29,8 @@
   },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.0"
+    "electron-builder": "^24.9.0",
+    "electron-icon-builder": "^2.0.1"
   },
   "build": {
     "appId": "com.rnokids.printer",
@@ -52,7 +53,7 @@
       "target": [
         "dmg"
       ],
-      "icon": "assets/icon.icns",
+      "icon": "assets/icons/mac/icon.icns",
       "category": "public.app-category.productivity",
       "artifactName": "RNO-Kids-Printer-${arch}.${ext}"
     },

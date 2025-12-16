@@ -33,7 +33,7 @@ Ou usar ferramentas de linha de comando:
 npm install -g electron-icon-builder
 
 # Gerar todos os ícones a partir de um PNG
-electron-icon-builder --input=./icon-source.png --output=./assets
+electron-icon-builder --input=./icon.png --output=./assets
 ```
 
 ## Temporário
